@@ -1,0 +1,42 @@
+---
+abstract: 'A work queue implemented with MongoDB'
+author:
+  - 'David Golden <dagolden@cpan.org>'
+build_requires:
+  File::Find: 0
+  File::Temp: 0
+  Test::More: 0.96
+configure_requires:
+  ExtUtils::MakeMaker: 6.30
+dynamic_config: 0
+generated_by: 'Dist::Zilla version 4.300021, CPAN::Meta::Converter version 2.120921'
+license: apache
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: MongoDBx-Queue
+no_index:
+  directory:
+    - t
+    - xt
+    - examples
+    - corpus
+  package:
+    - DB
+provides:
+  MongoDBx::Queue:
+    file: lib/MongoDBx/Queue.pm
+    version: 0.001
+requires:
+  Any::Moose: 0
+  Const::Fast: 0
+  MongoDB: 0.45
+  boolean: 0
+  perl: 5.010
+  strict: 0
+  warnings: 0
+resources:
+  bugtracker: https://github.com/dagolden/mongodbx-queue/issues
+  homepage: https://metacpan.org/release/MongoDBx-Queue
+  repository: git://github.com/dagolden/mongodbx-queue.git
+version: 0.001

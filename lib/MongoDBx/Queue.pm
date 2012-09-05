@@ -4,17 +4,17 @@ use warnings;
 
 package MongoDBx::Queue;
 
-# ABSTRACT: A work queue implemented with MongoDB
-our $VERSION = '0.001'; # VERSION
+# ABSTRACT: A message queue implemented with MongoDB
+our $VERSION = '0.002'; # VERSION
 
 use Any::Moose;
 use Const::Fast qw/const/;
 use MongoDB 0.45 ();
 use boolean;
 
-const my $ID        => '_id';
-const my $RESERVED  => '_r';
-const my $SCHEDULED => '_s';
+const my $ID       => '_id';
+const my $RESERVED => '_r';
+const my $PRIORITY => '_p';
 
 
 has db => (
@@ -53,15 +53,13 @@ sub _build__coll {
 # Methods
 
 
-# XXX eventually, need to add a scheduled time to this -- xdg, 2012-08-30
-
 sub add_task {
-  my ( $self, $data ) = @_;
+  my ( $self, $data, $opts ) = @_;
 
   $self->_coll->insert(
     {
       %$data,
-      $SCHEDULED => time(),
+      $PRIORITY => $opts->{priority} // time(),
     },
     {
       safe => $self->safe,
@@ -71,33 +69,39 @@ sub add_task {
 
 
 sub reserve_task {
-  my ($self) = @_;
+  my ( $self, $opts ) = @_;
 
+  my $now    = time();
   my $result = $self->db->run_command(
     {
       findAndModify => $self->name,
-      query         => { $RESERVED => { '$exists' => boolean::false } },
-      sort          => { $SCHEDULED => 1 },
-      update        => { '$set' => { $RESERVED => time() } },
+      query         => {
+        $PRIORITY => { '$lte' => $opts->{max_priority} // $now },
+        $RESERVED => { '$exists' => boolean::false },
+      },
+      sort => { $PRIORITY => 1 },
+      update => { '$set' => { $RESERVED => $now } },
     },
   );
 
   # XXX check get_last_error? -- xdg, 2012-08-29
   if ( ref $result ) {
-    return $result->{value};
+    return $result->{value}; # could be undef if not found
   }
   else {
-    die $result; # XXX docs unclear, but imply string error
+    die "MongoDB error: $result"; # XXX docs unclear, but imply string error
   }
 }
 
 
 sub reschedule_task {
-  my ($self, $task, $epochsecs) = @_;
-  $epochsecs //= $task->{$SCHEDULED}; # default to original time
+  my ( $self, $task, $opts ) = @_;
   $self->_coll->update(
     { $ID => $task->{$ID} },
-    { '$unset'  => { $RESERVED => 0 }, '$set' => { $SCHEDULED => $epochsecs } },
+    {
+      '$unset'  => { $RESERVED => 0 },
+      '$set'    => { $PRIORITY => $opts->{priority} // $task->{$PRIORITY} },
+    },
     { safe => $self->safe }
   );
 }
@@ -146,11 +150,11 @@ __END__
 
 =head1 NAME
 
-MongoDBx::Queue - A work queue implemented with MongoDB
+MongoDBx::Queue - A message queue implemented with MongoDB
 
 =head1 VERSION
 
-version 0.001
+version 0.002
 
 =head1 SYNOPSIS
 
@@ -161,7 +165,7 @@ version 0.001
   my $connection = MongoDB::Connection->new( @parameters );
   my $database = $connection->get_database("queue_db");
 
-  my $queue = MongoDBx::Queue->new( db => $database );
+  my $queue = MongoDBx::Queue->new( { db => $database } );
 
   $queue->add_task( { msg => "Hello World" } );
   $queue->add_task( { msg => "Goodbye World" } );
@@ -176,11 +180,14 @@ version 0.001
 B<ALPHA> -- this is an early release and is still in development.  Testing
 and feedback welcome.
 
-MongoDBx::Queue implements a simple message queue using MongoDB as a backend.
+MongoDBx::Queue implements a simple, prioritized message queue using MongoDB as
+a backend.  By default, messages are prioritized by insertion time, creating a
+FIFO queue.
 
 On a single host with MongoDB, it provides a zero-configuration message service
 across local applications.  Alternatively, it can use a MongoDB database
-cluster that provides replication and fail-over for an even more durable queue.
+cluster that provides replication and fail-over for an even more durable,
+multi-host message queue.
 
 Features:
 
@@ -188,7 +195,7 @@ Features:
 
 =item *
 
-hash references, not objects
+messages as hash references, not objects
 
 =item *
 
@@ -196,7 +203,15 @@ arbitrary message fields
 
 =item *
 
-stalled tasks can be timed-out
+arbitrary scheduling on insertion
+
+=item *
+
+atomic message reservation
+
+=item *
+
+stalled reservations can be timed-out
 
 =item *
 
@@ -207,10 +222,6 @@ task rescheduling
 Not yet implemented:
 
 =over 4
-
-=item *
-
-arbitrary scheduling on insertion
 
 =item *
 
@@ -245,41 +256,81 @@ Defaults to true.
 
 =head2 new
 
-  my $queue = MongoDBx::Queue->new( db => $database, @options );
+  $queue = MongoDBx::Queue->new( { db => $database, %options } );
 
 Creates and returns a new queue object.  The C<db> argument is required.
 Other attributes may be provided as well.
 
 =head2 add_task
 
-  $queue->add_task( $hashref );
+  $queue->add_task( \%message, \%options );
 
-Adds a task to the queue.  The hash reference will be shallow copied into the
-task.  Keys must not start with underscores, which are reserved for
-MongoDBx::Queue.
+Adds a task to the queue.  The C<\%message> hash reference will be shallow
+copied into the task and not include objects except as described by
+L<MongoDB::DataTypes>.  Top-level keys must not start with underscores, which are
+reserved for MongoDBx::Queue.
+
+The C<\%options> hash reference is optional and may contain the following key:
+
+=over 4
+
+=item *
+
+C<priority>: sets the priority for the task. Defaults to C<time()>.
+
+=back
+
+Note that setting a "future" priority may cause a task to be invisible
+to C<reserve_task>.  See that method for more details.
 
 =head2 reserve_task
 
   $task = $queue->reserve_task;
+  $task = $queue->reserve_task( \%options );
 
 Atomically marks and returns a task.  The task is marked in the queue as
-in-progress so it can not be reserved again unless is is rescheduled or
-timed-out.  The task returned is a hash reference containing the data added in
-C<add_task>, including private keys for use by MongoDBx::Queue.
+"reserved" (in-progress) so it can not be reserved again unless is is
+rescheduled or timed-out.  The task returned is a hash reference containing the
+data added in C<add_task>, including private keys for use by MongoDBx::Queue
+methods.
 
-Tasks are returned in insertion time order with a resolution of one second.
+Tasks are returned in priority order from lowest to highest.  If multiple tasks
+have identical, lowest priorities, their ordering is undefined.  If no tasks
+are available or visible, it will return C<undef>.
+
+The C<\%options> hash reference is optional and may contain the following key:
+
+=over 4
+
+=item *
+
+C<max_priority>: sets the maximum priority for the task. Defaults to C<time()>.
+
+=back
+
+The C<max_priority> option controls whether "future" tasks are visible.  If
+the lowest task priority is greater than the C<max_priority>, this method
+returns C<undef>.
 
 =head2 reschedule_task
 
   $queue->reschedule_task( $task );
-  $queue->reschedule_task( $task, time() );
-  $queue->reschedule_task( $task, $when );
+  $queue->reschedule_task( $task, \%options );
 
-Releases the reservation on a task.  If there is no second argument, the
-task keeps its original priority.  If a second argument is provided, it
-sets a new insertion time for the task.  The schedule is ordered by epoch
-seconds, so an arbitrary past or future time can be set and affects subsequent
-reservation order.
+Releases the reservation on a task so it can be reserved again.
+
+The C<\%options> hash reference is optional and may contain the following key:
+
+=over 4
+
+=item *
+
+C<priority>: sets the priority for the task. Defaults to the task's original priority.
+
+=back
+
+Note that setting a "future" priority may cause a task to be invisible
+to C<reserve_task>.  See that method for more details.
 
 =head2 remove_task
 

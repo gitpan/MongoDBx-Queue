@@ -1,8 +1,8 @@
 NAME
-    MongoDBx::Queue - A work queue implemented with MongoDB
+    MongoDBx::Queue - A message queue implemented with MongoDB
 
 VERSION
-    version 0.001
+    version 0.002
 
 SYNOPSIS
       use v5.10;
@@ -12,7 +12,7 @@ SYNOPSIS
       my $connection = MongoDB::Connection->new( @parameters );
       my $database = $connection->get_database("queue_db");
 
-      my $queue = MongoDBx::Queue->new( db => $database );
+      my $queue = MongoDBx::Queue->new( { db => $database } );
 
       $queue->add_task( { msg => "Hello World" } );
       $queue->add_task( { msg => "Goodbye World" } );
@@ -26,27 +26,30 @@ DESCRIPTION
     ALPHA -- this is an early release and is still in development. Testing
     and feedback welcome.
 
-    MongoDBx::Queue implements a simple message queue using MongoDB as a
-    backend.
+    MongoDBx::Queue implements a simple, prioritized message queue using
+    MongoDB as a backend. By default, messages are prioritized by insertion
+    time, creating a FIFO queue.
 
     On a single host with MongoDB, it provides a zero-configuration message
     service across local applications. Alternatively, it can use a MongoDB
     database cluster that provides replication and fail-over for an even
-    more durable queue.
+    more durable, multi-host message queue.
 
     Features:
 
-    *   hash references, not objects
+    *   messages as hash references, not objects
 
     *   arbitrary message fields
 
-    *   stalled tasks can be timed-out
+    *   arbitrary scheduling on insertion
+
+    *   atomic message reservation
+
+    *   stalled reservations can be timed-out
 
     *   task rescheduling
 
     Not yet implemented:
-
-    *   arbitrary scheduling on insertion
 
     *   parameter checking
 
@@ -70,39 +73,65 @@ ATTRIBUTES
 
 METHODS
   new
-      my $queue = MongoDBx::Queue->new( db => $database, @options );
+      $queue = MongoDBx::Queue->new( { db => $database, %options } );
 
     Creates and returns a new queue object. The "db" argument is required.
     Other attributes may be provided as well.
 
   add_task
-      $queue->add_task( $hashref );
+      $queue->add_task( \%message, \%options );
 
-    Adds a task to the queue. The hash reference will be shallow copied into
-    the task. Keys must not start with underscores, which are reserved for
-    MongoDBx::Queue.
+    Adds a task to the queue. The "\%message" hash reference will be shallow
+    copied into the task and not include objects except as described by
+    MongoDB::DataTypes. Top-level keys must not start with underscores,
+    which are reserved for MongoDBx::Queue.
+
+    The "\%options" hash reference is optional and may contain the following
+    key:
+
+    *   "priority": sets the priority for the task. Defaults to "time()".
+
+    Note that setting a "future" priority may cause a task to be invisible
+    to "reserve_task". See that method for more details.
 
   reserve_task
       $task = $queue->reserve_task;
+      $task = $queue->reserve_task( \%options );
 
     Atomically marks and returns a task. The task is marked in the queue as
-    in-progress so it can not be reserved again unless is is rescheduled or
-    timed-out. The task returned is a hash reference containing the data
-    added in "add_task", including private keys for use by MongoDBx::Queue.
+    "reserved" (in-progress) so it can not be reserved again unless is is
+    rescheduled or timed-out. The task returned is a hash reference
+    containing the data added in "add_task", including private keys for use
+    by MongoDBx::Queue methods.
 
-    Tasks are returned in insertion time order with a resolution of one
-    second.
+    Tasks are returned in priority order from lowest to highest. If multiple
+    tasks have identical, lowest priorities, their ordering is undefined. If
+    no tasks are available or visible, it will return "undef".
+
+    The "\%options" hash reference is optional and may contain the following
+    key:
+
+    *   "max_priority": sets the maximum priority for the task. Defaults to
+        "time()".
+
+    The "max_priority" option controls whether "future" tasks are visible.
+    If the lowest task priority is greater than the "max_priority", this
+    method returns "undef".
 
   reschedule_task
       $queue->reschedule_task( $task );
-      $queue->reschedule_task( $task, time() );
-      $queue->reschedule_task( $task, $when );
+      $queue->reschedule_task( $task, \%options );
 
-    Releases the reservation on a task. If there is no second argument, the
-    task keeps its original priority. If a second argument is provided, it
-    sets a new insertion time for the task. The schedule is ordered by epoch
-    seconds, so an arbitrary past or future time can be set and affects
-    subsequent reservation order.
+    Releases the reservation on a task so it can be reserved again.
+
+    The "\%options" hash reference is optional and may contain the following
+    key:
+
+    *   "priority": sets the priority for the task. Defaults to the task's
+        original priority.
+
+    Note that setting a "future" priority may cause a task to be invisible
+    to "reserve_task". See that method for more details.
 
   remove_task
       $queue->remove_task( $task );

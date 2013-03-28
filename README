@@ -2,7 +2,7 @@ NAME
     MongoDBx::Queue - A message queue implemented with MongoDB
 
 VERSION
-    version 0.002
+    version 0.003
 
 SYNOPSIS
       use v5.10;
@@ -146,6 +146,24 @@ METHODS
     argument is given, the timeout defaults to 120 seconds. The timeout
     should be set longer than the expected task processing time, so that
     only dead/hung tasks are returned to the active queue.
+
+  search
+      my @results = $queue->search( \%query, \%options );
+
+    Returns a list of tasks in the queue based on search criteria. The query
+    should be expressed in the usual MongoDB fashion. In addition to MongoDB
+    options "limit", "skip" and "sort", this method supports a "reserved"
+    option. If present, results will be limited to reserved tasks if true or
+    unreserved tasks if false.
+
+  peek
+      $queue->peek( $task );
+
+    Retrieves a copy of the task from the queue. This is useful to retrieve
+    all fields from a partial-field result from "search". It is equivalent
+    to:
+
+      $self->search( { _id => $task->{_id} } );
 
   size
       $queue->size;

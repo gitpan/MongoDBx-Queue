@@ -1,3 +1,4 @@
+CONTRIBUTING
 Changes
 LICENSE
 MANIFEST
@@ -5,16 +6,18 @@ META.json
 META.yml
 Makefile.PL
 README
-README.PATCHING
 dist.ini
 examples/synopsis.pl
 lib/MongoDBx/Queue.pm
 perlcritic.rc
 t/00-compile.t
+t/00-report-prereqs.t
 t/queue.t
+t/search.t
 xt/author/critic.t
 xt/author/pod-spell.t
 xt/release/distmeta.t
+xt/release/minimum-version.t
 xt/release/pod-coverage.t
 xt/release/pod-syntax.t
 xt/release/portability.t

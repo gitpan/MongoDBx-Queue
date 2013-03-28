@@ -5,7 +5,7 @@ use warnings;
 package MongoDBx::Queue;
 
 # ABSTRACT: A message queue implemented with MongoDB
-our $VERSION = '0.002'; # VERSION
+our $VERSION = '0.003'; # VERSION
 
 use Any::Moose;
 use Const::Fast qw/const/;
@@ -18,122 +18,148 @@ const my $PRIORITY => '_p';
 
 
 has db => (
-  is       => 'ro',
-  isa      => 'MongoDB::Database',
-  required => 1,
+    is       => 'ro',
+    isa      => 'MongoDB::Database',
+    required => 1,
 );
 
 
 has name => (
-  is      => 'ro',
-  isa     => 'Str',
-  default => 'queue',
+    is      => 'ro',
+    isa     => 'Str',
+    default => 'queue',
 );
 
 
 has safe => (
-  is      => 'ro',
-  isa     => 'Bool',
-  default => 1,
+    is      => 'ro',
+    isa     => 'Bool',
+    default => 1,
 );
 
 # Internal collection attribute
 
 has _coll => (
-  is         => 'ro',
-  isa        => 'MongoDB::Collection',
-  lazy_build => 1,
+    is         => 'ro',
+    isa        => 'MongoDB::Collection',
+    lazy_build => 1,
 );
 
 sub _build__coll {
-  my ($self) = @_;
-  return $self->db->get_collection( $self->name );
+    my ($self) = @_;
+    return $self->db->get_collection( $self->name );
 }
 
 # Methods
 
 
 sub add_task {
-  my ( $self, $data, $opts ) = @_;
+    my ( $self, $data, $opts ) = @_;
 
-  $self->_coll->insert(
-    {
-      %$data,
-      $PRIORITY => $opts->{priority} // time(),
-    },
-    {
-      safe => $self->safe,
-    }
-  );
+    $self->_coll->insert(
+        {
+            %$data, $PRIORITY => $opts->{priority} // time(),
+        },
+        {
+            safe => $self->safe,
+        }
+    );
 }
 
 
 sub reserve_task {
-  my ( $self, $opts ) = @_;
+    my ( $self, $opts ) = @_;
 
-  my $now    = time();
-  my $result = $self->db->run_command(
-    {
-      findAndModify => $self->name,
-      query         => {
-        $PRIORITY => { '$lte' => $opts->{max_priority} // $now },
-        $RESERVED => { '$exists' => boolean::false },
-      },
-      sort => { $PRIORITY => 1 },
-      update => { '$set' => { $RESERVED => $now } },
-    },
-  );
+    my $now    = time();
+    my $result = $self->db->run_command(
+        {
+            findAndModify => $self->name,
+            query         => {
+                $PRIORITY => { '$lte' => $opts->{max_priority} // $now },
+                $RESERVED => { '$exists' => boolean::false },
+            },
+            sort => { $PRIORITY => 1 },
+            update => { '$set' => { $RESERVED => $now } },
+        },
+    );
 
-  # XXX check get_last_error? -- xdg, 2012-08-29
-  if ( ref $result ) {
-    return $result->{value}; # could be undef if not found
-  }
-  else {
-    die "MongoDB error: $result"; # XXX docs unclear, but imply string error
-  }
+    # XXX check get_last_error? -- xdg, 2012-08-29
+    if ( ref $result ) {
+        return $result->{value}; # could be undef if not found
+    }
+    else {
+        die "MongoDB error: $result"; # XXX docs unclear, but imply string error
+    }
 }
 
 
 sub reschedule_task {
-  my ( $self, $task, $opts ) = @_;
-  $self->_coll->update(
-    { $ID => $task->{$ID} },
-    {
-      '$unset'  => { $RESERVED => 0 },
-      '$set'    => { $PRIORITY => $opts->{priority} // $task->{$PRIORITY} },
-    },
-    { safe => $self->safe }
-  );
+    my ( $self, $task, $opts ) = @_;
+    $self->_coll->update(
+        { $ID => $task->{$ID} },
+        {
+            '$unset' => { $RESERVED => 0 },
+            '$set'   => { $PRIORITY => $opts->{priority} // $task->{$PRIORITY} },
+        },
+        { safe => $self->safe }
+    );
 }
 
 
 sub remove_task {
-  my ( $self, $task ) = @_;
-  $self->_coll->remove( { $ID => $task->{$ID} } );
+    my ( $self, $task ) = @_;
+    $self->_coll->remove( { $ID => $task->{$ID} } );
 }
 
 
 sub apply_timeout {
-  my ( $self, $timeout ) = @_;
-  $timeout //= 120;
-  my $cutoff = time() - $timeout;
-  $self->_coll->update(
-    { $RESERVED => { '$lt'     => $cutoff } },
-    { '$unset'  => { $RESERVED => 0 } },
-    { safe => $self->safe, multiple => 1 }
-  );
+    my ( $self, $timeout ) = @_;
+    $timeout //= 120;
+    my $cutoff = time() - $timeout;
+    $self->_coll->update(
+        { $RESERVED => { '$lt'     => $cutoff } },
+        { '$unset'  => { $RESERVED => 0 } },
+        { safe => $self->safe, multiple => 1 }
+    );
+}
+
+
+sub search {
+    my ( $self, $query, $opts ) = @_;
+    $query = {} unless ref $query eq 'HASH';
+    $opts  = {} unless ref $opts eq 'HASH';
+    if ( exists $opts->{reserved} ) {
+        $query->{$RESERVED} =
+          { '$exists' => $opts->{reserved} ? boolean::true : boolean::false };
+        delete $opts->{reserved};
+    }
+    my $cursor = $self->_coll->query( $query, $opts );
+    if ( $opts->{fields} && ref $opts->{fields} ) {
+        my $spec =
+          ref $opts->{fields} eq 'HASH'
+          ? $opts->{fields}
+          : { map { $_ => 1 } @{ $opts->{fields} } };
+        $cursor->fields($spec);
+    }
+    return $cursor->all;
+}
+
+
+sub peek {
+    my ( $self, $task ) = @_;
+    return $self->search( { $ID => $task->{$ID} } );
 }
 
 
 sub size {
-  my ($self) = @_;
-  return $self->_coll->count;
+    my ($self) = @_;
+    return $self->_coll->count;
 }
 
 
 sub waiting {
-  my ($self) = @_;
-  return $self->_coll->count( { $RESERVED => { '$exists' => boolean::false } } );
+    my ($self) = @_;
+    return $self->_coll->count( { $RESERVED => { '$exists' => boolean::false } } );
 }
 
 no Any::Moose;
@@ -148,13 +174,15 @@ __END__
 
 =pod
 
+=encoding utf-8
+
 =head1 NAME
 
 MongoDBx::Queue - A message queue implemented with MongoDB
 
 =head1 VERSION
 
-version 0.002
+version 0.003
 
 =head1 SYNOPSIS
 
@@ -346,6 +374,25 @@ Removes reservations that occurred more than C<$seconds> ago.  If no
 argument is given, the timeout defaults to 120 seconds.  The timeout
 should be set longer than the expected task processing time, so that
 only dead/hung tasks are returned to the active queue.
+
+=head2 search
+
+  my @results = $queue->search( \%query, \%options );
+
+Returns a list of tasks in the queue based on search criteria.  The
+query should be expressed in the usual MongoDB fashion.  In addition
+to MongoDB options C<limit>, C<skip> and C<sort>, this method supports
+a C<reserved> option.  If present, results will be limited to reserved
+tasks if true or unreserved tasks if false.
+
+=head2 peek
+
+  $queue->peek( $task );
+
+Retrieves a copy of the task from the queue.  This is useful to retrieve all
+fields from a partial-field result from C<search>.  It is equivalent to:
+
+  $self->search( { _id => $task->{_id} } );
 
 =head2 size
 

@@ -2,7 +2,7 @@ NAME
     MongoDBx::Queue - A message queue implemented with MongoDB
 
 VERSION
-    version 0.003
+    version 0.004
 
 SYNOPSIS
       use v5.10;
@@ -157,13 +157,15 @@ METHODS
     unreserved tasks if false.
 
   peek
-      $queue->peek( $task );
+      $task = $queue->peek( $task );
 
-    Retrieves a copy of the task from the queue. This is useful to retrieve
-    all fields from a partial-field result from "search". It is equivalent
-    to:
+    Retrieves a full copy of the task from the queue. This is useful to
+    retrieve all fields from a partial-field result from "search". It is
+    equivalent to:
 
       $self->search( { _id => $task->{_id} } );
+
+    Returns undef if the task is not found.
 
   size
       $queue->size;

@@ -5,7 +5,7 @@ use warnings;
 package MongoDBx::Queue;
 
 # ABSTRACT: A message queue implemented with MongoDB
-our $VERSION = '0.003'; # VERSION
+our $VERSION = '0.004'; # VERSION
 
 use Any::Moose;
 use Const::Fast qw/const/;
@@ -147,7 +147,8 @@ sub search {
 
 sub peek {
     my ( $self, $task ) = @_;
-    return $self->search( { $ID => $task->{$ID} } );
+    my @result = $self->search( { $ID => $task->{$ID} } );
+    return wantarray ? @result : $result[0];
 }
 
 
@@ -182,7 +183,7 @@ MongoDBx::Queue - A message queue implemented with MongoDB
 
 =head1 VERSION
 
-version 0.003
+version 0.004
 
 =head1 SYNOPSIS
 
@@ -387,12 +388,14 @@ tasks if true or unreserved tasks if false.
 
 =head2 peek
 
-  $queue->peek( $task );
+  $task = $queue->peek( $task );
 
-Retrieves a copy of the task from the queue.  This is useful to retrieve all
+Retrieves a full copy of the task from the queue.  This is useful to retrieve all
 fields from a partial-field result from C<search>.  It is equivalent to:
 
   $self->search( { _id => $task->{_id} } );
+
+Returns undef if the task is not found.
 
 =head2 size
 

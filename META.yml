@@ -13,7 +13,7 @@ build_requires:
 configure_requires:
   ExtUtils::MakeMaker: 6.30
 dynamic_config: 0
-generated_by: 'Dist::Zilla version 4.300031, CPAN::Meta::Converter version 2.120921'
+generated_by: 'Dist::Zilla version 4.300034, CPAN::Meta::Converter version 2.130880'
 license: apache
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -30,7 +30,7 @@ no_index:
 provides:
   MongoDBx::Queue:
     file: lib/MongoDBx/Queue.pm
-    version: 0.003
+    version: 0.004
 requires:
   Any::Moose: 0
   Const::Fast: 0
@@ -43,4 +43,4 @@ resources:
   bugtracker: https://github.com/dagolden/mongodbx-queue/issues
   homepage: https://metacpan.org/release/MongoDBx-Queue
   repository: git://github.com/dagolden/mongodbx-queue.git
-version: 0.003
+version: 0.004

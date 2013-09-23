@@ -2,30 +2,30 @@ NAME
     MongoDBx::Queue - A message queue implemented with MongoDB
 
 VERSION
-    version 0.004
+    version 1.000
 
 SYNOPSIS
-      use v5.10;
-      use MongoDB;
-      use MongoDBx::Queue;
+        use v5.10;
+        use MongoDBx::Queue;
 
-      my $connection = MongoDB::Connection->new( @parameters );
-      my $database = $connection->get_database("queue_db");
+        my $queue = MongoDBx::Queue->new(
+            database_name => "queue_db",
+            client_options => {
+                host => "mongodb://example.net:27017",
+                username => "willywonka",
+                password => "ilovechocolate",
+            }
+        );
 
-      my $queue = MongoDBx::Queue->new( { db => $database } );
+        $queue->add_task( { msg => "Hello World" } );
+        $queue->add_task( { msg => "Goodbye World" } );
 
-      $queue->add_task( { msg => "Hello World" } );
-      $queue->add_task( { msg => "Goodbye World" } );
-
-      while ( my $task = $queue->reserve_task ) {
-        say $task->{msg};
-        $queue->remove_task( $task );
-      }
+        while ( my $task = $queue->reserve_task ) {
+            say $task->{msg};
+            $queue->remove_task( $task );
+        }
 
 DESCRIPTION
-    ALPHA -- this is an early release and is still in development. Testing
-    and feedback welcome.
-
     MongoDBx::Queue implements a simple, prioritized message queue using
     MongoDB as a backend. By default, messages are prioritized by insertion
     time, creating a FIFO queue.
@@ -49,6 +49,10 @@ DESCRIPTION
 
     *   task rescheduling
 
+    *   automatically creates correct index
+
+    *   fork-safe
+
     Not yet implemented:
 
     *   parameter checking
@@ -59,10 +63,16 @@ DESCRIPTION
     not meet the constraints required by a capped collection.
 
 ATTRIBUTES
-  db
-    A MongoDB::Database object to hold the queue. Required.
+  database_name
+    A MongoDB database name. Unless a "db_name" is provided in the
+    "client_options" attribute, this database will be the default for
+    authentication. Defaults to 'test'
 
-  name
+  client_options
+    A hash reference of MongoDB::MongoClient options that will be passed to
+    its "connect" method.
+
+  collection_name
     A collection name for the queue. Defaults to 'queue'. The collection
     must only be used by MongoDBx::Queue or unpredictable awful things will
     happen.
@@ -73,10 +83,16 @@ ATTRIBUTES
 
 METHODS
   new
-      $queue = MongoDBx::Queue->new( { db => $database, %options } );
+       $queue = MongoDBx::Queue->new(
+            database_name   => "my_app",
+            client_options  => {
+                host => "mongodb://example.net:27017",
+                username => "willywonka",
+                password => "ilovechocolate",
+            },
+       );
 
-    Creates and returns a new queue object. The "db" argument is required.
-    Other attributes may be provided as well.
+    Creates and returns a new queue object.
 
   add_task
       $queue->add_task( \%message, \%options );
@@ -180,16 +196,16 @@ METHODS
 SUPPORT
   Bugs / Feature Requests
     Please report any bugs or feature requests through the issue tracker at
-    <https://github.com/dagolden/mongodbx-queue/issues>. You will be
+    <https://github.com/dagolden/MongoDBx-Queue/issues>. You will be
     notified automatically of any progress on your issue.
 
   Source Code
     This is open source software. The code repository is available for
     public review and contribution under the terms of the license.
 
-    <https://github.com/dagolden/mongodbx-queue>
+    <https://github.com/dagolden/MongoDBx-Queue>
 
-      git clone git://github.com/dagolden/mongodbx-queue.git
+      git clone https://github.com/dagolden/MongoDBx-Queue.git
 
 AUTHOR
     David Golden <dagolden@cpan.org>

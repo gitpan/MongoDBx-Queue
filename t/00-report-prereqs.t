@@ -10,17 +10,22 @@ use File::Spec::Functions;
 use List::Util qw/max/;
 
 my @modules = qw(
-  Any::Moose
-  Const::Fast
   ExtUtils::MakeMaker
-  File::Find
   File::Spec::Functions
   File::Temp
+  IO::Handle
+  IPC::Open3
   List::Util
   MongoDB
+  Moose
+  MooseX::AttributeShortcuts
+  MooseX::Role::MongoDB
+  MooseX::Types::Moose
   Test::Deep
   Test::More
+  Tie::IxHash
   boolean
+  namespace::autoclean
   perl
   strict
   warnings

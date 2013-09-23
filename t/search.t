@@ -10,13 +10,12 @@ use MongoDBx::Queue;
 my $conn = eval { MongoDB::Connection->new; };
 plan skip_all => "No MongoDB on localhost" unless $conn;
 
-my $db   = $conn->get_database("mongodbx_queue_test");
-my $coll = $db->get_collection("queue_t");
-$coll->drop;
+my $cl_name = "mongodbx_queue_" . time;
 
 my ( $queue, $task, $task2 );
 
-$queue = new_ok( 'MongoDBx::Queue', [ { db => $db, name => 'queue_t' } ] );
+$queue = new_ok( 'MongoDBx::Queue', [ { collection_name => $cl_name } ] );
+$queue->mongo_collection($cl_name)->drop;
 
 my @task_list = (
     { first => "John", last => "Doe",   tel => "555-456-7890" },
@@ -92,6 +91,8 @@ is( scalar @empty, 0, "peek unknown returns empty list in list context" );
 
 @found = $queue->search( { last => "Doe" }, { limit => 1 } );
 is( scalar @found, 1, "got correct number from search limited to 1 result" );
+
+$queue->mongo_collection($cl_name)->drop unless $ENV{PERL_MONGODBX_QUEUE_DEBUG};
 
 done_testing;
 

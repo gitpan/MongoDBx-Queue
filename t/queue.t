@@ -10,13 +10,12 @@ use MongoDBx::Queue;
 my $conn = eval { MongoDB::Connection->new; };
 plan skip_all => "No MongoDB on localhost" unless $conn;
 
-my $db   = $conn->get_database("mongodbx_queue_test");
-my $coll = $db->get_collection("queue_t");
-$coll->drop;
+my $cl_name = "mongodbx_queue_" . time;
 
 my ( $queue, $task, $task2 );
 
-$queue = new_ok( 'MongoDBx::Queue', [ { db => $db, name => 'queue_t' } ] );
+$queue = new_ok( 'MongoDBx::Queue', [ { collection_name => $cl_name } ] );
+$queue->mongo_collection($cl_name)->drop;
 
 ok( $queue->add_task( { msg => "Hello World" } ), "added a task" );
 
@@ -94,6 +93,7 @@ ok( $queue->remove_task($task), "removed task" );
 
 is( $queue->size, 0, "size() shows 0" );
 
+$queue->mongo_collection($cl_name)->drop unless $ENV{PERL_MONGODBX_QUEUE_DEBUG};
 
 done_testing;
 

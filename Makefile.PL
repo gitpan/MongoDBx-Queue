@@ -20,23 +20,28 @@ my %WriteMakefileArgs = (
   "LICENSE" => "apache",
   "NAME" => "MongoDBx::Queue",
   "PREREQ_PM" => {
-    "Any::Moose" => 0,
-    "Const::Fast" => 0,
-    "MongoDB" => "0.45",
+    "MongoDB" => "0.702",
+    "Moose" => 2,
+    "MooseX::AttributeShortcuts" => 0,
+    "MooseX::Role::MongoDB" => 0,
+    "MooseX::Types::Moose" => 0,
+    "Tie::IxHash" => 0,
     "boolean" => 0,
+    "namespace::autoclean" => 0,
     "strict" => 0,
     "warnings" => 0
   },
   "TEST_REQUIRES" => {
     "ExtUtils::MakeMaker" => 0,
-    "File::Find" => 0,
     "File::Spec::Functions" => 0,
     "File::Temp" => 0,
+    "IO::Handle" => 0,
+    "IPC::Open3" => 0,
     "List::Util" => 0,
     "Test::Deep" => 0,
     "Test::More" => "0.96"
   },
-  "VERSION" => "0.004",
+  "VERSION" => "1.000",
   "test" => {
     "TESTS" => "t/*.t"
   }

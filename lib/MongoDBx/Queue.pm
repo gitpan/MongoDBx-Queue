@@ -5,28 +5,45 @@ use warnings;
 package MongoDBx::Queue;
 
 # ABSTRACT: A message queue implemented with MongoDB
-our $VERSION = '0.004'; # VERSION
+our $VERSION = '1.000'; # VERSION
 
-use Any::Moose;
-use Const::Fast qw/const/;
-use MongoDB 0.45 ();
+use Moose 2;
+use MooseX::Types::Moose qw/:all/;
+use MooseX::AttributeShortcuts;
+
+use MongoDB 0.702 ();
+use Tie::IxHash;
 use boolean;
+use namespace::autoclean;
 
-const my $ID       => '_id';
-const my $RESERVED => '_r';
-const my $PRIORITY => '_p';
+my $ID       = '_id';
+my $RESERVED = '_r';
+my $PRIORITY = '_p';
+
+with 'MooseX::Role::MongoDB';
+
+#--------------------------------------------------------------------------#
+# Public attributes
+#--------------------------------------------------------------------------#
 
 
-has db => (
-    is       => 'ro',
-    isa      => 'MongoDB::Database',
-    required => 1,
+has database_name => (
+    is      => 'ro',
+    isa     => Str,
+    default => 'test',
 );
 
 
-has name => (
+has client_options => (
     is      => 'ro',
-    isa     => 'Str',
+    isa     => HashRef,
+    default => sub { {} },
+);
+
+
+has collection_name => (
+    is      => 'ro',
+    isa     => Str,
     default => 'queue',
 );
 
@@ -37,33 +54,27 @@ has safe => (
     default => 1,
 );
 
-# Internal collection attribute
+sub _build__mongo_default_database { $_[0]->database_name }
+sub _build__mongo_client_options   { $_[0]->client_options }
 
-has _coll => (
-    is         => 'ro',
-    isa        => 'MongoDB::Collection',
-    lazy_build => 1,
-);
-
-sub _build__coll {
+sub BUILD {
     my ($self) = @_;
-    return $self->db->get_collection( $self->name );
+    # ensure index on PRIORITY in the same order we use for reserving
+    $self->mongo_collection( $self->collection_name )
+      ->ensure_index( [ $PRIORITY => 1 ] );
 }
 
-# Methods
+#--------------------------------------------------------------------------#
+# Public methods
+#--------------------------------------------------------------------------#
 
 
 sub add_task {
     my ( $self, $data, $opts ) = @_;
 
-    $self->_coll->insert(
-        {
-            %$data, $PRIORITY => $opts->{priority} // time(),
-        },
-        {
-            safe => $self->safe,
-        }
-    );
+    $self->mongo_collection( $self->collection_name )
+      ->insert( { %$data, $PRIORITY => $opts->{priority} // time(), },
+        { safe => $self->safe, } );
 }
 
 
@@ -71,16 +82,16 @@ sub reserve_task {
     my ( $self, $opts ) = @_;
 
     my $now    = time();
-    my $result = $self->db->run_command(
-        {
-            findAndModify => $self->name,
+    my $result = $self->mongo_database->run_command(
+        [
+            findAndModify => $self->collection_name,
             query         => {
                 $PRIORITY => { '$lte' => $opts->{max_priority} // $now },
                 $RESERVED => { '$exists' => boolean::false },
             },
             sort => { $PRIORITY => 1 },
             update => { '$set' => { $RESERVED => $now } },
-        },
+        ]
     );
 
     # XXX check get_last_error? -- xdg, 2012-08-29
@@ -95,7 +106,7 @@ sub reserve_task {
 
 sub reschedule_task {
     my ( $self, $task, $opts ) = @_;
-    $self->_coll->update(
+    $self->mongo_collection( $self->collection_name )->update(
         { $ID => $task->{$ID} },
         {
             '$unset' => { $RESERVED => 0 },
@@ -108,7 +119,7 @@ sub reschedule_task {
 
 sub remove_task {
     my ( $self, $task ) = @_;
-    $self->_coll->remove( { $ID => $task->{$ID} } );
+    $self->mongo_collection( $self->collection_name )->remove( { $ID => $task->{$ID} } );
 }
 
 
@@ -116,7 +127,7 @@ sub apply_timeout {
     my ( $self, $timeout ) = @_;
     $timeout //= 120;
     my $cutoff = time() - $timeout;
-    $self->_coll->update(
+    $self->mongo_collection( $self->collection_name )->update(
         { $RESERVED => { '$lt'     => $cutoff } },
         { '$unset'  => { $RESERVED => 0 } },
         { safe => $self->safe, multiple => 1 }
@@ -133,7 +144,8 @@ sub search {
           { '$exists' => $opts->{reserved} ? boolean::true : boolean::false };
         delete $opts->{reserved};
     }
-    my $cursor = $self->_coll->query( $query, $opts );
+    my $cursor =
+      $self->mongo_collection( $self->collection_name )->query( $query, $opts );
     if ( $opts->{fields} && ref $opts->{fields} ) {
         my $spec =
           ref $opts->{fields} eq 'HASH'
@@ -154,22 +166,22 @@ sub peek {
 
 sub size {
     my ($self) = @_;
-    return $self->_coll->count;
+    return $self->mongo_collection( $self->collection_name )->count;
 }
 
 
 sub waiting {
     my ($self) = @_;
-    return $self->_coll->count( { $RESERVED => { '$exists' => boolean::false } } );
+    return $self->mongo_collection( $self->collection_name )
+      ->count( { $RESERVED => { '$exists' => boolean::false } } );
 }
 
-no Any::Moose;
 __PACKAGE__->meta->make_immutable;
 
 1;
 
 
-# vim: ts=2 sts=2 sw=2 et:
+# vim: ts=4 sts=4 sw=4 et:
 
 __END__
 
@@ -183,31 +195,31 @@ MongoDBx::Queue - A message queue implemented with MongoDB
 
 =head1 VERSION
 
-version 0.004
+version 1.000
 
 =head1 SYNOPSIS
 
-  use v5.10;
-  use MongoDB;
-  use MongoDBx::Queue;
+    use v5.10;
+    use MongoDBx::Queue;
 
-  my $connection = MongoDB::Connection->new( @parameters );
-  my $database = $connection->get_database("queue_db");
+    my $queue = MongoDBx::Queue->new(
+        database_name => "queue_db",
+        client_options => {
+            host => "mongodb://example.net:27017",
+            username => "willywonka",
+            password => "ilovechocolate",
+        }
+    );
 
-  my $queue = MongoDBx::Queue->new( { db => $database } );
+    $queue->add_task( { msg => "Hello World" } );
+    $queue->add_task( { msg => "Goodbye World" } );
 
-  $queue->add_task( { msg => "Hello World" } );
-  $queue->add_task( { msg => "Goodbye World" } );
-
-  while ( my $task = $queue->reserve_task ) {
-    say $task->{msg};
-    $queue->remove_task( $task );
-  }
+    while ( my $task = $queue->reserve_task ) {
+        say $task->{msg};
+        $queue->remove_task( $task );
+    }
 
 =head1 DESCRIPTION
-
-B<ALPHA> -- this is an early release and is still in development.  Testing
-and feedback welcome.
 
 MongoDBx::Queue implements a simple, prioritized message queue using MongoDB as
 a backend.  By default, messages are prioritized by insertion time, creating a
@@ -246,6 +258,14 @@ stalled reservations can be timed-out
 
 task rescheduling
 
+=item *
+
+automatically creates correct index
+
+=item *
+
+fork-safe
+
 =back
 
 Not yet implemented:
@@ -267,11 +287,18 @@ meet the constraints required by a capped collection.
 
 =head1 ATTRIBUTES
 
-=head2 db
+=head2 database_name
 
-A MongoDB::Database object to hold the queue.  Required.
+A MongoDB database name.  Unless a C<db_name> is provided in the
+C<client_options> attribute, this database will be the default for
+authentication.  Defaults to 'test'
 
-=head2 name
+=head2 client_options
+
+A hash reference of L<MongoDB::MongoClient> options that will be passed to its
+C<connect> method.
+
+=head2 collection_name
 
 A collection name for the queue.  Defaults to 'queue'.  The collection must
 only be used by MongoDBx::Queue or unpredictable awful things will happen.
@@ -285,10 +312,16 @@ Defaults to true.
 
 =head2 new
 
-  $queue = MongoDBx::Queue->new( { db => $database, %options } );
+   $queue = MongoDBx::Queue->new(
+        database_name   => "my_app",
+        client_options  => {
+            host => "mongodb://example.net:27017",
+            username => "willywonka",
+            password => "ilovechocolate",
+        },
+   );
 
-Creates and returns a new queue object.  The C<db> argument is required.
-Other attributes may be provided as well.
+Creates and returns a new queue object.
 
 =head2 add_task
 
@@ -409,6 +442,8 @@ Returns the number of tasks in the queue, including in-progress ones.
 
 Returns the number of tasks in the queue that have not been reserved.
 
+=for Pod::Coverage BUILD
+
 =for :stopwords cpan testmatrix url annocpan anno bugtracker rt cpants kwalitee diff irc mailto metadata placeholders metacpan
 
 =head1 SUPPORT
@@ -416,7 +451,7 @@ Returns the number of tasks in the queue that have not been reserved.
 =head2 Bugs / Feature Requests
 
 Please report any bugs or feature requests through the issue tracker
-at L<https://github.com/dagolden/mongodbx-queue/issues>.
+at L<https://github.com/dagolden/MongoDBx-Queue/issues>.
 You will be notified automatically of any progress on your issue.
 
 =head2 Source Code
@@ -424,9 +459,9 @@ You will be notified automatically of any progress on your issue.
 This is open source software.  The code repository is available for
 public review and contribution under the terms of the license.
 
-L<https://github.com/dagolden/mongodbx-queue>
+L<https://github.com/dagolden/MongoDBx-Queue>
 
-  git clone git://github.com/dagolden/mongodbx-queue.git
+  git clone https://github.com/dagolden/MongoDBx-Queue.git
 
 =head1 AUTHOR
 

@@ -6,6 +6,7 @@ META.json
 META.yml
 Makefile.PL
 README
+cpanfile
 dist.ini
 examples/synopsis.pl
 lib/MongoDBx/Queue.pm

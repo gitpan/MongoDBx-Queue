@@ -5,7 +5,7 @@ use warnings;
 package MongoDBx::Queue;
 
 # ABSTRACT: A message queue implemented with MongoDB
-our $VERSION = '1.000'; # VERSION
+our $VERSION = '1.001'; # VERSION
 
 use Moose 2;
 use MooseX::Types::Moose qw/:all/;
@@ -20,7 +20,7 @@ my $ID       = '_id';
 my $RESERVED = '_r';
 my $PRIORITY = '_p';
 
-with 'MooseX::Role::MongoDB';
+with 'MooseX::Role::Logger', 'MooseX::Role::MongoDB' => { -version => 0.003 };
 
 #--------------------------------------------------------------------------#
 # Public attributes
@@ -195,7 +195,7 @@ MongoDBx::Queue - A message queue implemented with MongoDB
 
 =head1 VERSION
 
-version 1.000
+version 1.001
 
 =head1 SYNOPSIS
 

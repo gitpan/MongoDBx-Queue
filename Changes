@@ -1,5 +1,12 @@
 Revision history for MongoDBx-Queue
 
+1.001     2013-10-15 19:35:26 America/New_York
+
+    [FIXES]
+
+    - Consumes MooseX::Role::Logger as required by MooseX::Role::MongoDB
+      version 0.003 or later
+
 1.000     2013-09-22 20:57:32 America/New_York
 
     [INCOMPATIBLE CHANGES]

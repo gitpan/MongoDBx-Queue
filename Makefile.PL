@@ -4,7 +4,7 @@ use warnings;
 
 use 5.010;
 
-use ExtUtils::MakeMaker 6.30;
+use ExtUtils::MakeMaker 6.17;
 
 
 
@@ -13,7 +13,7 @@ my %WriteMakefileArgs = (
   "AUTHOR" => "David Golden <dagolden\@cpan.org>",
   "BUILD_REQUIRES" => {},
   "CONFIGURE_REQUIRES" => {
-    "ExtUtils::MakeMaker" => "6.30"
+    "ExtUtils::MakeMaker" => "6.17"
   },
   "DISTNAME" => "MongoDBx-Queue",
   "EXE_FILES" => [],
@@ -23,7 +23,8 @@ my %WriteMakefileArgs = (
     "MongoDB" => "0.702",
     "Moose" => 2,
     "MooseX::AttributeShortcuts" => 0,
-    "MooseX::Role::MongoDB" => 0,
+    "MooseX::Role::Logger" => 0,
+    "MooseX::Role::MongoDB" => "0.003",
     "MooseX::Types::Moose" => 0,
     "Tie::IxHash" => 0,
     "boolean" => 0,
@@ -34,14 +35,11 @@ my %WriteMakefileArgs = (
   "TEST_REQUIRES" => {
     "ExtUtils::MakeMaker" => 0,
     "File::Spec::Functions" => 0,
-    "File::Temp" => 0,
-    "IO::Handle" => 0,
-    "IPC::Open3" => 0,
     "List::Util" => 0,
     "Test::Deep" => 0,
     "Test::More" => "0.96"
   },
-  "VERSION" => "1.000",
+  "VERSION" => "1.001",
   "test" => {
     "TESTS" => "t/*.t"
   }

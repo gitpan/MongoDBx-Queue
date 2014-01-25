@@ -2,7 +2,7 @@ NAME
     MongoDBx::Queue - A message queue implemented with MongoDB
 
 VERSION
-    version 1.001
+    version 1.002
 
 SYNOPSIS
         use v5.10;

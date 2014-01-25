@@ -1,5 +1,11 @@
 Revision history for MongoDBx-Queue
 
+1.002     2014-01-24 23:05:20-05:00 America/New_York
+
+    [FIXES]
+
+    - Updated for changes in MooseX::Role::MongoDB 0.006
+
 1.001     2013-10-15 19:35:26 America/New_York
 
     [FIXES]
